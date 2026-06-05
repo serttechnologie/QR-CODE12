@@ -1,0 +1,1681 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>QR PRO</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+<style>
+:root {
+  --bg: #f0ede6; --paper: #fdfbf7; --ink: #1a1814; --mid: #8a8578;
+  --accent: #d4621a; --border: #d8d3c8; --mono: 'DM Mono', monospace; --sans: 'Bricolage Grotesque', sans-serif;
+  --folder-color: #cca01a;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+body { background:var(--bg); color:var(--ink); font-family:var(--sans); min-height:100vh; display:flex; flex-direction:column; overflow-x: hidden; }
+
+header { border-bottom:2px solid var(--ink); padding:0 15px; display:flex; align-items:stretch; justify-content:space-between; background:var(--paper); position:sticky; top:0; z-index:100; height:60px; }
+.logo { display:flex; align-items:center; gap:8px; }
+.logo-icon { width:22px; height:22px; background:var(--ink); border-radius:4px; display:grid; grid-template-columns:1fr 1fr; gap:2px; padding:4px; }
+.logo-icon span { background:var(--paper); border-radius:1px; }
+nav { display:flex; }
+.tab { font-family:var(--mono); font-size:.75rem; padding:0 15px; border:none; border-bottom:3px solid transparent; background:transparent; color:var(--mid); cursor:pointer; font-weight:600; }
+.tab.active { color:var(--ink); border-bottom-color:var(--accent); }
+.badge { background:var(--accent); color:white; border-radius:10px; padding:1px 6px; font-size:.6rem; margin-left:4px; }
+
+.view { display:none; animation: fadeIn 0.2s ease; }
+.view.active { display:block; }
+@keyframes fadeIn { from{opacity:0; transform:translateY(5px)} to{opacity:1; transform:translateY(0)} }
+
+.create-wrap { max-width:500px; margin:0 auto; padding:30px 20px; display:flex; flex-direction:column; gap:20px; }
+.field-group { display:flex; flex-direction:column; gap:6px; position: relative; }
+label { font-size:.8rem; font-weight:700; color:var(--mid); }
+input, textarea, select { font-family:var(--mono); font-size:16px; background:var(--paper); border:1.5px solid var(--border); border-radius:12px; padding:14px; width:100%; outline:none; transition: border-color 0.2s; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+
+.btn-main { background:var(--ink); color:var(--paper); border:none; border-radius:14px; padding:18px; font-weight:800; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; font-family: var(--sans); font-size: 1rem; transition: opacity 0.2s; }
+.btn-main:active { opacity: 0.8; }
+.scanner-trigger { background: var(--accent); color: white; border: none; padding: 6px 12px; border-radius: 8px; font-size: 0.65rem; font-weight: 800; cursor: pointer; align-self: flex-end; margin-bottom: -5px; font-family: var(--sans); }
+
+/* Styles du Scanner Caméra Externe */
+#camera-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 1500; display: none; flex-direction: column; color: white; }
+.camera-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 10px; overflow: hidden; }
+#camera-reader { width: 100%; max-width: 480px; background: #000; border-radius: 12px; overflow: hidden; position: relative; }
+
+/* Zone de scan redimensionnable par les doigts */
+#scan-zone-overlay {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 10;
+  border: 2.5px solid rgba(255,255,255,0.0);
+  box-shadow: 0 0 0 9999px rgba(0,0,0,0.45);
+  border-radius: 10px;
+  transition: width 0.15s, height 0.15s;
+}
+/* Coins lumineux du cadre */
+#scan-zone-overlay::before, #scan-zone-overlay::after {
+  content: '';
+  position: absolute;
+  width: 22px; height: 22px;
+  border-color: #fff;
+  border-style: solid;
+}
+#scan-zone-overlay::before { top: -2px; left: -2px; border-width: 3px 0 0 3px; border-radius: 6px 0 0 0; }
+#scan-zone-overlay::after  { bottom: -2px; right: -2px; border-width: 0 3px 3px 0; border-radius: 0 0 6px 0; }
+
+.scan-corner-tr, .scan-corner-bl {
+  position: absolute;
+  width: 22px; height: 22px;
+  border-color: #fff;
+  border-style: solid;
+}
+.scan-corner-tr { top: -2px; right: -2px; border-width: 3px 3px 0 0; border-radius: 0 6px 0 0; }
+.scan-corner-bl { bottom: -2px; left: -2px; border-width: 0 0 3px 3px; border-radius: 0 0 0 6px; }
+
+/* Poignée de resize (coin bas-droit) */
+#scan-resize-handle {
+  position: absolute;
+  bottom: -14px; right: -14px;
+  width: 36px; height: 36px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: nwse-resize;
+  pointer-events: all;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  touch-action: none;
+  z-index: 20;
+  font-size: 14px;
+  color: white;
+  border: 2px solid rgba(255,255,255,0.4);
+}
+
+.camera-controls { padding: 20px; background: var(--paper); display: flex; flex-direction: column; gap: 15px; color: var(--ink); }
+.range-container { display: flex; flex-direction: column; gap: 6px; }
+.range-container label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.75rem; }
+
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; padding: 15px; }
+
+/* ── Cards ── */
+.qr-card { background: var(--paper); border: 1.5px solid var(--border); border-radius: 12px; padding: 10px; position: relative; text-align: center; transition: border-color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s; user-select: none; -webkit-user-select: none; }
+.qr-card:not(.reordering) { cursor: pointer; }
+.qr-card:not(.reordering):hover { border-color: var(--ink); transform: translateY(-2px); }
+.qr-card img { width:100%; border-radius:6px; margin-bottom:8px; pointer-events: none; }
+.qr-card p { font-size:0.75rem; font-weight:800; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Styles spécifiques Dossier */
+.qr-card.is-folder { border-left: 5px solid var(--folder-color); }
+.folder-icon-wrap { width: 100%; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 3rem; margin-bottom: 8px; color: var(--folder-color); background: var(--bg); border-radius: 6px; }
+.folder-count { font-family: var(--mono); font-size: 0.65rem; color: var(--mid); margin-top: 2px; }
+
+.del-btn { position: absolute; top: -6px; right: -6px; background: #e53e3e; border: none; border-radius: 50%; width: 22px; height: 22px; color: white; font-size: 0.65rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15); z-index: 5; }
+.fav-btn { position: absolute; top: 4px; left: 5px; background: none; border: none; font-size: 1rem; cursor: pointer; opacity: 1; line-height: 1; padding: 0; z-index: 4; }
+.drag-handle { display: none; position: absolute; bottom: 8px; right: 8px; width: 24px; height: 24px; background: var(--bg); border: 1.5px solid var(--border); border-radius: 6px; color: var(--mid); align-items: center; justify-content: center; font-size: 0.75rem; cursor: grab; z-index: 4; touch-action: none; }
+.drag-handle:active { cursor: grabbing; background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+body.mode-edit .del-btn { display: flex; }
+body.mode-edit .drag-handle { display: flex; }
+body.mode-edit .fav-btn { display: none; }
+
+.qr-card.dragging { opacity: 0.4; transform: scale(0.96); border-color: var(--accent); box-shadow: none; }
+.qr-card.drag-over { border-color: var(--accent); border-style: dashed; transform: scale(1.02); }
+.qr-card.folder-drop-hover { border-color: var(--folder-color) !important; background: #fffdf3; transform: scale(1.05); box-shadow: 0 4px 12px rgba(204,160,26,0.2); }
+.drag-clone { position: fixed; pointer-events: none; z-index: 9999; opacity: 0.9; transform: scale(1.04); box-shadow: 0 16px 36px rgba(26, 24, 20, 0.25); border-color: var(--accent) !important; background: var(--paper); border-radius: 12px; display: flex !important; flex-direction: row !important; align-items: center !important; text-align: left !important; }
+
+.drag-hint { font-family: var(--mono); font-size: 0.65rem; color: var(--accent); text-align: center; padding: 8px 15px 0; display: flex; align-items: center; justify-content: center; gap: 6px; opacity: 0; max-height: 0; overflow: hidden; transition: all 0.3s ease; }
+body.mode-edit .drag-hint.visible { opacity: 1; max-height: 30px; }
+
+.storage-bar-wrap { margin: 0 15px 10px; background: var(--paper); border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+.storage-bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.storage-fill { height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.4s; }
+.storage-label { font-family: var(--mono); font-size: 0.65rem; color: var(--mid); white-space: nowrap; }
+
+.gallery-toolbar { padding: 10px 15px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.search-input { font-family: var(--mono); font-size: 0.8rem; background: var(--paper); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 12px; flex: 1; min-width: 120px; outline: none; transition: border-color 0.2s; }
+.search-input:focus { border-color: var(--accent); }
+.filter-btn { font-family: var(--mono); font-size: 0.7rem; font-weight: 700; padding: 8px 12px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--paper); color: var(--mid); cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+.filter-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.edit-toggle-btn { background: var(--paper); border: 1.5px solid var(--ink); color: var(--ink); }
+.edit-toggle-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+.folder-path-bar { margin: 10px 15px 0; background: var(--paper); border: 1.5px dashed var(--border); border-radius: 10px; padding: 10px 14px; display: none; align-items: center; gap: 10px; font-family: var(--mono); font-size: 0.8rem; }
+.btn-back { background: var(--ink); color: var(--paper); border: none; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; cursor: pointer; font-weight: bold; }
+
+.io-toolbar { padding: 8px 15px 0; display: flex; gap: 8px; }
+.io-btn { font-family: var(--mono); font-size: 0.7rem; font-weight: 700; padding: 8px 14px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--paper); color: var(--ink); cursor: pointer; transition: all 0.2s; flex: 1; text-align: center; }
+.io-btn:hover { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* Focus overlay */
+.focus-overlay { position: fixed; inset:0; background: rgba(245, 242, 235, 0.98); backdrop-filter: blur(8px); z-index: 200; display: none; flex-direction: column; align-items:center; justify-content: center; padding: 20px; overflow-y: auto; }
+.focus-card { background: var(--paper); border: 2px solid var(--ink); border-radius: 24px; padding: 25px 15px; width: 100%; max-width: 340px; display: flex; flex-direction: column; align-items: center; gap: 16px; position: relative; margin: auto; }
+.focus-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.focus-nav-side { position: absolute; top: 40%; transform: translateY(-50%); z-index: 10; }
+.focus-nav-left { left: 16px; }
+.focus-nav-right { right: 16px; }
+.nav-btn { background: var(--paper); border: 2px solid var(--ink); border-radius: 50%; width: 50px; height: 50px; font-size: 1.3rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+.nav-btn:hover { background: var(--ink); color: var(--paper); }
+.nav-btn:disabled { opacity: 0.2; cursor: default; box-shadow: none; }
+.focus-top-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.nav-counter { font-family: var(--mono); font-size: 0.75rem; color: var(--mid); }
+.focus-fav-btn { background: none; border: 1.5px solid var(--border); border-radius: 50%; width: 36px; height: 36px; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+
+.decoded-box { width: 100%; background: var(--bg); border: 1.5px dashed var(--mid); border-radius: 10px; padding: 12px; font-family: var(--mono); font-size: 0.8rem; word-break: break-all; max-height: 120px; overflow-y: auto; text-align: left; display: none; }
+.edit-fields-container { display: none; flex-direction: column; gap: 10px; width: 100%; text-align: left; }
+
+#temp-qr { position: absolute; left: -9999px; }
+.toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--ink); color:white; padding:10px 20px; border-radius:50px; font-size:0.75rem; z-index:3000; opacity:0; transition:0.3s; pointer-events:none; white-space: nowrap; }
+.toast.show { opacity:1; }
+
+#del-modal { position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:300; display:none; align-items:center; justify-content:center; }
+.del-modal-box { background:var(--paper); border:2px solid var(--ink); border-radius:20px; padding:28px 24px; max-width:340px; width:90%; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,0.18); }
+.del-modal-box h3 { font-size:1.1rem; font-weight:800; margin-bottom:8px; }
+.del-modal-box p { font-size:0.82rem; color:var(--mid); margin-bottom:20px; line-height:1.5; }
+.del-modal-actions { display:flex; flex-direction:column; gap:8px; }
+.del-btn-drive { background:var(--accent); color:white; border:none; border-radius:10px; padding:13px; font-family:var(--sans); font-size:0.88rem; font-weight:700; cursor:pointer; }
+.del-btn-local { background:var(--ink); color:white; border:none; border-radius:10px; padding:13px; font-family:var(--sans); font-size:0.88rem; font-weight:700; cursor:pointer; }
+.del-btn-cancel { background:none; color:var(--mid); border:1.5px solid var(--border); border-radius:10px; padding:11px; font-family:var(--sans); font-size:0.85rem; cursor:pointer; }
+
+/* ── Notes Module ── */
+.notes-wrap { max-width: 600px; margin: 0 auto; padding: 20px 15px; display: flex; flex-direction: column; gap: 16px; }
+.notes-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.notes-search { font-family: var(--mono); font-size: 0.8rem; background: var(--paper); border: 1.5px solid var(--border); border-radius: 10px; padding: 8px 12px; flex: 1; min-width: 120px; outline: none; transition: border-color 0.2s; }
+.notes-search:focus { border-color: var(--accent); }
+
+/* Breadcrumb */
+.notes-path-bar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--paper); border: 1.5px dashed var(--border); border-radius: 10px; font-family: var(--mono); font-size: 0.8rem; }
+
+/* Folders list */
+.notes-folders-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.notes-folder-card { background: var(--paper); border: 1.5px solid var(--border); border-left: 5px solid var(--folder-color); border-radius: 12px; padding: 14px 12px; cursor: pointer; position: relative; transition: border-color 0.2s, transform 0.2s; }
+.notes-folder-card:hover { border-color: var(--ink); transform: translateY(-2px); }
+.notes-folder-card .folder-icon { font-size: 1.8rem; margin-bottom: 6px; }
+.notes-folder-card .folder-name { font-size: 0.9rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notes-folder-card .folder-meta { font-family: var(--mono); font-size: 0.65rem; color: var(--mid); margin-top: 3px; }
+.notes-folder-card .del-btn { position: absolute; top: -6px; right: -6px; background: #e53e3e; border: none; border-radius: 50%; width: 22px; height: 22px; color: white; font-size: 0.65rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15); z-index: 5; }
+body.mode-notes-edit .notes-folder-card .del-btn { display: flex; }
+
+/* Notes list inside folder */
+.notes-list { display: flex; flex-direction: column; gap: 10px; }
+.note-card { background: var(--paper); border: 1.5px solid var(--border); border-radius: 14px; padding: 16px; cursor: pointer; position: relative; transition: border-color 0.2s, transform 0.15s; }
+.note-card:hover { border-color: var(--ink); transform: translateY(-1px); }
+.note-card .note-title { font-size: 1rem; font-weight: 800; margin-bottom: 6px; }
+.note-card .note-desc { font-family: var(--mono); font-size: 0.78rem; color: var(--mid); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.note-card .note-date { font-family: var(--mono); font-size: 0.62rem; color: var(--border); margin-top: 8px; }
+.note-card .del-btn { position: absolute; top: -6px; right: -6px; background: #e53e3e; border: none; border-radius: 50%; width: 22px; height: 22px; color: white; font-size: 0.65rem; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15); z-index: 5; }
+body.mode-notes-edit .note-card .del-btn { display: flex; }
+
+/* Note overlay editor */
+#note-modal { position: fixed; inset: 0; background: rgba(245,242,235,0.98); backdrop-filter: blur(8px); z-index: 400; display: none; flex-direction: column; overflow-y: auto; padding: 20px 15px; }
+.note-modal-inner { max-width: 560px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 14px; }
+.note-modal-header { display: flex; align-items: center; gap: 12px; }
+.note-modal-title { font-size: 1.3rem; font-weight: 800; flex: 1; }
+.btn-close-note { background: var(--bg); border: 1.5px solid var(--border); border-radius: 50%; width: 36px; height: 36px; font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+#note-input-title { font-family: var(--sans); font-size: 1.1rem; font-weight: 700; border-radius: 10px; padding: 12px 14px; }
+#note-input-desc { font-family: var(--mono); font-size: 0.9rem; border-radius: 10px; padding: 12px 14px; min-height: 200px; resize: vertical; line-height: 1.6; }
+
+/* Empty states */
+.notes-empty { text-align: center; padding: 50px 20px; color: var(--mid); font-size: 0.85rem; font-family: var(--mono); }
+.notes-empty span { font-size: 2.5rem; display: block; margin-bottom: 10px; opacity: 0.5; }
+
+@media (max-width: 600px) {
+  .notes-folders-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── End Notes Module ── */
+
+@media (max-width: 600px) {
+  .gallery-grid { grid-template-columns: 1fr; gap: 10px; padding: 10px; }
+  .qr-card { display: flex; flex-direction: row; align-items: center; text-align: left; padding: 12px 14px; gap: 16px; }
+  .qr-card img, .folder-icon-wrap { width: 64px; height: 64px; margin-bottom: 0; flex-shrink: 0; }
+  .folder-icon-wrap { font-size: 2rem; }
+  .qr-card p { font-size: 0.95rem; flex: 1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .fav-btn { position: static; order: 3; font-size: 1.2rem; padding: 4px; }
+  .drag-handle { position: static; order: 4; display: none; flex-shrink: 0; }
+  body.mode-edit .drag-handle { display: flex; }
+  .del-btn { top: -4px; left: -4px; right: auto; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon"><span></span><span></span><span></span><span></span></div>
+    <h1>QR PRO</h1>
+  </div>
+  <nav>
+    <button class="tab active" onclick="switchView('create', this)">Créer</button>
+    <button class="tab" onclick="switchView('gallery', this)">Galerie <span class="badge" id="b-total">0</span></button>
+    <button class="tab" onclick="switchView('notes', this)">Notes <span class="badge" id="b-notes">0</span></button>
+  </nav>
+</header>
+
+<div id="camera-modal">
+  <div class="camera-container">
+    <div style="font-size:1rem; font-weight:800; margin-bottom:12px; text-align:center; opacity:0.9;">Placer le code dans le cadre</div>
+    <div id="camera-reader" style="position:relative;"></div>
+    <div style="margin-top:10px; font-family:var(--mono); font-size:0.7rem; opacity:0.55; text-align:center;">Glisse ⤡ pour ajuster la zone · <span id="scan-size-val">250px</span></div>
+  </div>
+  <div class="camera-controls">
+    <div class="range-container">
+      <label>
+        <span>Taille de la zone de visée</span>
+        <span id="scan-size-val2">250px</span>
+      </label>
+      <input type="range" id="scan-size-input" min="100" max="400" value="250" step="5" oninput="onSliderChange(this.value)">
+    </div>
+    <button onclick="closeCameraScanner()" style="padding:15px; border-radius:10px; border:none; background:#eee; font-family:var(--sans); font-weight:700; width:100%; cursor:pointer;">Annuler / Fermer</button>
+  </div>
+</div>
+
+<div id="temp-qr"></div>
+
+<main id="view-create" class="view active">
+  <div class="create-wrap">
+    <h2 style="font-size:1.8rem; font-weight:800;">Nouveau QR</h2>
+    <div class="field-group">
+      <label>Nom</label>
+      <input type="text" id="in-title" placeholder="Ex: WiFi maison">
+    </div>
+    <div class="field-group">
+      <label>Dossier de destination</label>
+      <select id="in-folder">
+        <option value="">(Racine de la galerie)</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+        <label>Contenu</label>
+        <button class="scanner-trigger" onclick="openCameraScanner()">📷 Scanner un QR Code (Caméra)</button>
+      </div>
+      <textarea id="in-text" rows="5" placeholder="Saisir un lien, du texte, un identifiant…"></textarea>
+    </div>
+    <button class="btn-main" onclick="createNew()">
+      <span>Générer et Enregistrer</span>
+    </button>
+  </div>
+</main>
+
+<main id="view-gallery" class="view">
+  <div class="storage-bar-wrap">
+    <span class="storage-label">Stockage</span>
+    <div class="storage-bar"><div class="storage-fill" id="storage-fill"></div></div>
+    <span class="storage-label" id="storage-label">0%</span>
+  </div>
+  
+  <div class="gallery-toolbar">
+    <input class="search-input" type="text" id="search-input" placeholder="🔍 Rechercher…" oninput="render()">
+    <button class="filter-btn active" id="filter-all" onclick="setFilter('all', this)">Tous</button>
+    <button class="filter-btn" id="filter-fav" onclick="setFilter('fav', this)">⭐ Favoris</button>
+    <button class="filter-btn" onclick="createNewFolder()">📁 + Dossier</button>
+    <button class="filter-btn edit-toggle-btn" id="edit-toggle" onclick="toggleEditMode()">Modifier</button>
+  </div>
+
+  <div class="folder-path-bar" id="folder-path-bar">
+    <button class="btn-back" onclick="goUpFolder()">← Retour</button>
+    <span id="folder-path-name" style="font-weight:bold;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Dossier</span>
+    <button class="filter-btn" style="padding:5px 10px;font-size:0.68rem;flex-shrink:0;" onclick="createNewFolder()">📁+</button>
+  </div>
+
+  <div class="io-toolbar">
+    <button class="io-btn" id="drive-btn" onclick="toggleDrive()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <span id="drive-dot" style="width:8px;height:8px;border-radius:50%;background:#aaa;flex-shrink:0;transition:background 0.3s"></span>
+      <span id="drive-label">Drive</span>
+    </button>
+    <button class="io-btn" id="sync-btn" onclick="syncDrive()" style="display:flex;align-items:center;justify-content:center;gap:6px">
+      <span id="sync-icon">⟳</span> Synchroniser
+    </button>
+    <input type="file" id="import-input" style="display:none" accept=".json" onchange="importJSON(event)">
+  </div>
+  <div class="drag-hint" id="drag-hint">
+    Mode réorganisation — Glisse via ☰ ou dépose sur un dossier pour ranger.
+  </div>
+  <div id="display-grid" class="gallery-grid"></div>
+</main>
+
+<div id="focus-mode" class="focus-overlay">
+  <button class="nav-btn focus-nav-side focus-nav-left" id="nav-prev" onclick="navigateFocus(-1)">←</button>
+  <button class="nav-btn focus-nav-side focus-nav-right" id="nav-next" onclick="navigateFocus(1)">→</button>
+  <div class="focus-card">
+    <div class="focus-top-bar">
+      <span class="nav-counter" id="nav-counter">1 / 1</span>
+      <button class="focus-fav-btn" id="focus-fav-btn" onclick="toggleFocusFav()" title="Favori">☆</button>
+    </div>
+    
+    <h2 id="focus-title" style="font-size:1.3rem; font-weight:800; text-align:center;"></h2>
+    <div id="focus-qr-display" style="background:white; padding:10px; border-radius:10px; display: flex; justify-content: center; width:100%;"></div>
+    
+    <div class="edit-fields-container" id="focus-edit-container">
+      <div class="field-group" style="margin-bottom:8px;">
+        <label style="font-size:0.75rem;">Modifier le Titre</label>
+        <input type="text" id="edit-focus-title" style="padding:10px; font-size:14px; border-radius:8px;">
+      </div>
+      <div class="field-group" style="margin-bottom:8px;">
+        <label style="font-size:0.75rem;">Dossier</label>
+        <select id="edit-focus-folder" style="padding:10px; font-size:14px; border-radius:8px;"></select>
+      </div>
+      <div class="field-group">
+        <label style="font-size:0.75rem;">Modifier le Contenu</label>
+        <textarea id="edit-focus-text" rows="3" style="padding:10px; font-size:14px; border-radius:8px; font-family:var(--mono);"></textarea>
+      </div>
+    </div>
+
+    <div class="decoded-box" id="focus-decoded-box"></div>
+
+    <div class="focus-actions" id="focus-normal-actions">
+      <button class="btn-main" style="background: var(--accent);" id="btn-decode" onclick="scanCurrentFocusQR()">🔍 Décoder / Lire</button>
+      <button class="btn-main" style="background: #2b6cb0; color: white;" id="btn-trigger-edit" onclick="enableFocusEditMode()">✏ Modifier le contenu</button>
+      <button class="btn-main" onclick="downloadFocus()">⬇ Télécharger</button>
+      <button class="btn-main" style="background:var(--mid);" onclick="closeFocus()">Fermer</button>
+    </div>
+
+    <div class="focus-actions" id="focus-edit-actions" style="display:none;">
+      <button class="btn-main" style="background: #2f855a; color: white;" onclick="saveFocusModifications()">💾 Enregistrer</button>
+      <button class="btn-main" style="background:var(--mid);" onclick="cancelFocusEditMode()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<!-- ── NOTES VIEW ── -->
+<main id="view-notes" class="view">
+  <div class="notes-wrap">
+    <!-- Toolbar racine -->
+    <div id="notes-root-toolbar">
+      <div class="notes-toolbar">
+        <input class="notes-search" type="text" id="notes-search" placeholder="🔍 Rechercher une note…" oninput="renderNotes()">
+        <button class="filter-btn" onclick="createNoteFolder()">📁 + Dossier</button>
+        <button class="filter-btn edit-toggle-btn" id="notes-edit-toggle" onclick="toggleNotesEditMode()">Modifier</button>
+      </div>
+    </div>
+
+    <!-- Breadcrumb (visible quand dans un dossier) -->
+    <div class="notes-path-bar" id="notes-path-bar" style="display:none;">
+      <button class="btn-back" onclick="goUpNoteFolder()">← Retour</button>
+      <span id="notes-path-name" style="font-weight:bold;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Dossier</span>
+      <button class="filter-btn" style="padding:5px 10px;font-size:0.68rem;flex-shrink:0;" onclick="createNoteFolder()">📁+</button>
+      <button class="filter-btn" style="padding:5px 10px;font-size:0.68rem;flex-shrink:0;" onclick="createNote()">+ Note</button>
+    </div>
+
+    <!-- Grille des dossiers OU liste des notes -->
+    <div id="notes-display"></div>
+  </div>
+</main>
+
+<!-- ── NOTE EDITOR OVERLAY ── -->
+<div id="note-modal">
+  <div class="note-modal-inner">
+    <div class="note-modal-header">
+      <span class="note-modal-title" id="note-modal-label">Nouvelle note</span>
+      <button class="btn-close-note" onclick="closeNoteModal()">✕</button>
+    </div>
+    <div class="field-group">
+      <label>Titre</label>
+      <input type="text" id="note-input-title" placeholder="Ex: Identifiants PMU…">
+    </div>
+    <div class="field-group">
+      <label>Contenu / Description</label>
+      <textarea id="note-input-desc" placeholder="Écris tes notes ici…"></textarea>
+    </div>
+    <button class="btn-main" onclick="saveNoteFromModal()">
+      <span>💾 Enregistrer</span>
+    </button>
+  </div>
+</div>
+
+<script>
+// ─── État global ────────────────────────────────────────────────────────────
+let items = JSON.parse(localStorage.getItem('qr_items_v1') || '[]');
+let focusImgSrc = '';
+let focusIdx = 0;
+let currentFilter = 'all';
+let isEditMode = false;
+let isFocusEditing = false;
+let currentFolderId = null; // null = racine de l'application
+let folderStack = []; // pile pour navigation multi-niveaux QR
+const STORAGE_LIMIT_KB = 3500;
+
+let dragSrcIdx = null;
+let dragOverIdx = null;
+
+// État du scanner de caméra externe
+let html5QrScannerInstance = null;
+let currentScanSize = 250;
+
+// Initialisation et mise en conformité des anciennes données
+items.forEach(item => {
+  if (item.type === undefined) item.type = 'qr';
+  if (item.folderId === undefined) item.folderId = null;
+});
+
+function toggleEditMode() {
+  isEditMode = !isEditMode;
+  const btn = document.getElementById('edit-toggle');
+  if (isEditMode) {
+    document.body.classList.add('mode-edit');
+    btn.textContent = 'Terminé';
+    btn.classList.add('active');
+  } else {
+    document.body.classList.remove('mode-edit');
+    btn.textContent = 'Modifier';
+    btn.classList.remove('active');
+  }
+  render();
+}
+
+function initDragHint() {
+  const hint = document.getElementById('drag-hint');
+  if (hint) hint.classList.toggle('visible', items.length >= 2 && isEditMode);
+}
+
+// ─── Gestion des dossiers QR (multi-niveaux) ──────────────────────────────────
+function createNewFolder() {
+  const name = prompt("Nom du nouveau dossier :");
+  if (!name || !name.trim()) return;
+  items.push({
+    id: Date.now(), type: 'folder', title: name.trim(),
+    folderId: currentFolderId, fav: false
+  });
+  saveItems(); render(); updateFolderSelects();
+}
+
+function enterFolder(id, name) {
+  if (isEditMode) return;
+  folderStack.push({ id: currentFolderId, name: currentFolderId === null ? '🏠 Racine' : document.getElementById('folder-path-name').textContent });
+  currentFolderId = id;
+  updateQRBreadcrumb(name);
+  render();
+}
+
+function goUpFolder() {
+  if (!folderStack.length) return exitFolder();
+  const prev = folderStack.pop();
+  currentFolderId = prev.id;
+  if (currentFolderId === null) {
+    document.getElementById('folder-path-bar').style.display = "none";
+  } else {
+    updateQRBreadcrumb(prev.name);
+  }
+  render();
+}
+
+function exitFolder() {
+  currentFolderId = null;
+  folderStack = [];
+  document.getElementById('folder-path-bar').style.display = "none";
+  render();
+}
+
+function updateQRBreadcrumb(name) {
+  const pathBar = document.getElementById('folder-path-bar');
+  pathBar.style.display = "flex";
+  document.getElementById('folder-path-name').textContent = `📁 ${name}`;
+}
+
+function updateFolderSelects() {
+  const selectCreate = document.getElementById('in-folder');
+  if (!selectCreate) return;
+  const folders = items.filter(i => i.type === 'folder');
+  function buildPath(id) {
+    const f = folders.find(x => x.id === id);
+    if (!f) return '';
+    const parent = f.folderId ? buildPath(f.folderId) : '';
+    return parent ? parent + ' / ' + f.title : f.title;
+  }
+  let html = '<option value="">(Racine de la galerie)</option>';
+  folders.forEach(i => {
+    html += `<option value="${i.id}">📁 ${escapeHtml(buildPath(i.id))}</option>`;
+  });
+  selectCreate.innerHTML = html;
+}
+
+// ─── Drag & Drop ────────────────────────────────────────────────────────────
+function addDragEvents(card, realIdx) {
+  const handle = card.querySelector('.drag-handle');
+  if (!handle) return;
+
+  handle.addEventListener('mousedown', () => { card.setAttribute('draggable', 'true'); });
+  handle.addEventListener('mouseup', () => { card.removeAttribute('draggable'); });
+
+  card.addEventListener('dragstart', (e) => {
+    dragSrcIdx = realIdx;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  card.addEventListener('dragend', () => {
+    card.classList.remove('dragging');
+    card.removeAttribute('draggable');
+    document.querySelectorAll('.qr-card').forEach(c => c.classList.remove('drag-over', 'folder-drop-hover'));
+    
+    if (dragSrcIdx !== null && dragOverIdx !== null && dragSrcIdx !== dragOverIdx) {
+      const targetItem = items[dragOverIdx];
+      const srcItem = items[dragSrcIdx];
+      
+      if (srcItem.type === 'qr' && targetItem && targetItem.type === 'folder') {
+        srcItem.folderId = targetItem.id;
+        saveItems();
+        showToast(`✓ Déplacé dans "${targetItem.title}"`);
+      } else {
+        reorder(dragSrcIdx, dragOverIdx);
+      }
+    }
+    dragSrcIdx = null; dragOverIdx = null;
+    render();
+  });
+
+  card.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    if (realIdx !== dragSrcIdx) {
+      const targetItem = items[realIdx];
+      const srcItem = items[dragSrcIdx];
+      
+      document.querySelectorAll('.qr-card').forEach(c => c.classList.remove('drag-over', 'folder-drop-hover'));
+      
+      if (srcItem && srcItem.type === 'qr' && targetItem.type === 'folder') {
+        card.classList.add('folder-drop-hover');
+      } else {
+        card.classList.add('drag-over');
+      }
+      dragOverIdx = realIdx;
+    }
+  });
+
+  card.addEventListener('dragleave', () => card.classList.remove('drag-over', 'folder-drop-hover'));
+
+  // Version Tactile mobile
+  let touchStartX, touchStartY, touchClone, touchMoved = false;
+
+  handle.addEventListener('touchstart', (e) => {
+    dragSrcIdx = realIdx;
+    touchMoved = false;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+
+    const rect = card.getBoundingClientRect();
+    touchClone = card.cloneNode(true);
+    touchClone.className = 'qr-card drag-clone';
+    touchClone.style.cssText = `width: ${rect.width}px; height: ${rect.height}px; left: ${rect.left}px; top: ${rect.top}px;`;
+    document.body.appendChild(touchClone);
+    card.classList.add('dragging');
+  }, { passive: true });
+
+  handle.addEventListener('touchmove', (e) => {
+    if (dragSrcIdx === null || !touchClone) return;
+    touchMoved = true;
+    if(e.cancelable) e.preventDefault();
+
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartX;
+    const dy = touch.clientY - touchStartY;
+    
+    const rect = card.getBoundingClientRect();
+    touchClone.style.left = (rect.left + dx) + 'px';
+    touchClone.style.top = (rect.top + dy) + 'px';
+
+    touchClone.style.display = 'none';
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    touchClone.style.display = 'block';
+
+    const targetCard = el ? el.closest('.qr-card') : null;
+    document.querySelectorAll('.qr-card').forEach(c => c.classList.remove('drag-over', 'folder-drop-hover'));
+    
+    if (targetCard && targetCard !== card) {
+      const tIdx = parseInt(targetCard.dataset.realidx);
+      const srcItem = items[dragSrcIdx];
+      const targetItem = items[tIdx];
+      
+      if (srcItem && srcItem.type === 'qr' && targetItem && targetItem.type === 'folder') {
+        targetCard.classList.add('folder-drop-hover');
+      } else {
+        targetCard.classList.add('drag-over');
+      }
+      dragOverIdx = tIdx;
+    } else {
+      dragOverIdx = null;
+    }
+  }, { passive: false });
+
+  handle.addEventListener('touchend', () => {
+    if (touchClone) { touchClone.remove(); touchClone = null; }
+    card.classList.remove('dragging');
+    document.querySelectorAll('.qr-card').forEach(c => c.classList.remove('drag-over', 'folder-drop-hover'));
+    
+    if (touchMoved && dragSrcIdx !== null && dragOverIdx !== null && dragSrcIdx !== dragOverIdx) {
+      const targetItem = items[dragOverIdx];
+      const srcItem = items[dragSrcIdx];
+      
+      if (srcItem.type === 'qr' && targetItem && targetItem.type === 'folder') {
+        srcItem.folderId = targetItem.id;
+        saveItems();
+        showToast(`✓ Déplacé dans "${targetItem.title}"`);
+      } else {
+        reorder(dragSrcIdx, dragOverIdx);
+      }
+    }
+    dragSrcIdx = null; dragOverIdx = null; touchMoved = false;
+    render();
+  });
+}
+
+function reorder(fromIdx, toIdx) {
+  const moved = items.splice(fromIdx, 1)[0];
+  items.splice(toIdx, 0, moved);
+  saveItems();
+}
+
+// ─── Navigation Basique ─────────────────────────────────────────────────────
+function switchView(v, btn) {
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-' + v).classList.add('active');
+  btn.classList.add('active');
+  if (v === 'gallery') {
+    exitFolder();
+    folderStack = [];
+    updateFolderSelects();
+  }
+  if (v === 'notes') {
+    exitNoteFolder();
+    renderNotes();
+  }
+}
+
+function setFilter(f, btn) {
+  currentFilter = f;
+  document.querySelectorAll('.filter-btn:not(.edit-toggle-btn)').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
+function getFilteredItems() {
+  const query = (document.getElementById('search-input')?.value || '').toLowerCase().trim();
+  
+  return items
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => {
+      const matchFilter = currentFilter === 'fav' ? item.fav : true;
+      const matchSearch = query ? item.title.toLowerCase().includes(query) : true;
+      
+      if (query || currentFilter === 'fav') {
+        return matchFilter && matchSearch && item.type === 'qr';
+      } else {
+        return item.folderId === currentFolderId;
+      }
+    });
+}
+
+// ─── Fonctions Scanner Caméra (Zone Ajustable) ───────────────────────────────────
+let scanResizeDebounce = null;
+
+function openCameraScanner() {
+  document.getElementById('camera-modal').style.display = 'flex';
+  updateScanOverlaySize(currentScanSize);
+  startHtml5Scanner(currentScanSize);
+  initScanResizeHandle();
+}
+
+function updateScanOverlaySize(size) {
+  const overlay = document.getElementById('scan-zone-overlay');
+  if (!overlay) return;
+  overlay.style.width  = size + 'px';
+  overlay.style.height = size + 'px';
+  document.getElementById('scan-size-val').innerText  = size + 'px';
+  const val2 = document.getElementById('scan-size-val2');
+  if (val2) val2.innerText = size + 'px';
+  const slider = document.getElementById('scan-size-input');
+  if (slider) slider.value = size;
+}
+
+function initScanResizeHandle() {
+  const handle = document.getElementById('scan-resize-handle');
+  const overlay = document.getElementById('scan-zone-overlay');
+  if (!handle || !overlay) return;
+
+  // Empêche d'attacher plusieurs fois
+  if (handle._resizeInited) return;
+  handle._resizeInited = true;
+
+  let startX, startY, startSize;
+
+  function onPointerDown(e) {
+    e.preventDefault();
+    const pt = e.touches ? e.touches[0] : e;
+    startX = pt.clientX;
+    startY = pt.clientY;
+    startSize = currentScanSize;
+    handle.style.background = '#c0521a';
+
+    document.addEventListener('mousemove', onPointerMove, { passive: false });
+    document.addEventListener('mouseup',   onPointerUp);
+    document.addEventListener('touchmove', onPointerMove, { passive: false });
+    document.addEventListener('touchend',  onPointerUp);
+  }
+
+  function onPointerMove(e) {
+    if (e.cancelable) e.preventDefault();
+    const pt = e.touches ? e.touches[0] : e;
+    const dx = pt.clientX - startX;
+    const dy = pt.clientY - startY;
+    const delta = (Math.abs(dx) > Math.abs(dy)) ? dx : dy;
+    const newSize = Math.min(400, Math.max(100, Math.round(startSize + delta)));
+    currentScanSize = newSize;
+    updateScanOverlaySize(newSize);
+
+    // Relance avec debounce (300ms après arrêt du geste)
+    clearTimeout(scanResizeDebounce);
+    scanResizeDebounce = setTimeout(() => startHtml5Scanner(newSize), 300);
+  }
+
+  function onPointerUp() {
+    handle.style.background = 'var(--accent)';
+    document.removeEventListener('mousemove', onPointerMove);
+    document.removeEventListener('mouseup',   onPointerUp);
+    document.removeEventListener('touchmove', onPointerMove);
+    document.removeEventListener('touchend',  onPointerUp);
+  }
+
+  handle.addEventListener('mousedown',  onPointerDown);
+  handle.addEventListener('touchstart', onPointerDown, { passive: false });
+}
+
+function onSliderChange(val) {
+  currentScanSize = parseInt(val);
+  updateScanOverlaySize(currentScanSize);
+  clearTimeout(scanResizeDebounce);
+  scanResizeDebounce = setTimeout(() => startHtml5Scanner(currentScanSize), 350);
+}
+
+function resetReaderDiv() {
+  // Vide complètement le div et remet l'overlay dedans
+  const reader = document.getElementById('camera-reader');
+  reader.innerHTML = `
+    <div id="scan-zone-overlay">
+      <div class="scan-corner-tr"></div>
+      <div class="scan-corner-bl"></div>
+      <div id="scan-resize-handle" title="Glisse pour redimensionner">⤡</div>
+    </div>`;
+  // Réinitialise le flag pour re-attacher les events
+  const handle = document.getElementById('scan-resize-handle');
+  if (handle) handle._resizeInited = false;
+  updateScanOverlaySize(currentScanSize);
+  initScanResizeHandle();
+}
+
+function startHtml5Scanner(qrboxSize) {
+  if (html5QrScannerInstance) {
+    html5QrScannerInstance.stop()
+      .catch(() => {})
+      .finally(() => {
+        html5QrScannerInstance = null;
+        resetReaderDiv();
+        initScannerConfig(qrboxSize);
+      });
+  } else {
+    resetReaderDiv();
+    initScannerConfig(qrboxSize);
+  }
+}
+
+function initScannerConfig(qrboxSize) {
+  html5QrScannerInstance = new Html5Qrcode("camera-reader");
+  const config = { 
+    fps: 15, 
+    qrbox: { width: parseInt(qrboxSize), height: parseInt(qrboxSize) },
+    aspectRatio: 1.0
+  };
+
+  html5QrScannerInstance.start(
+    { facingMode: "environment" }, 
+    config,
+    (decodedText) => {
+      document.getElementById('in-text').value = decodedText;
+      if (navigator.vibrate) navigator.vibrate(50);
+      showToast("✓ Code détecté !");
+      closeCameraScanner();
+    },
+    () => { /* erreurs silencieuses pendant la recherche */ }
+  ).catch(err => {
+    console.error("Erreur caméra : ", err);
+    showToast("⚠ Erreur d'accès à la caméra");
+    closeCameraScanner();
+  });
+}
+
+function adjustScanSize(val) {
+  onSliderChange(val);
+}
+
+function closeCameraScanner() {
+  document.getElementById('camera-modal').style.display = 'none';
+  clearTimeout(scanResizeDebounce);
+  if (html5QrScannerInstance) {
+    html5QrScannerInstance.stop().catch(() => {});
+    html5QrScannerInstance = null;
+  }
+}
+
+// ─── Création QR ─────────────────────────────────────────────────────────────
+function createNew() {
+  const t = document.getElementById('in-title').value.trim();
+  const txt = document.getElementById('in-text').value.trim();
+  const destFolder = document.getElementById('in-folder').value;
+  
+  if (!t || !txt) return showToast('Remplis les deux champs');
+  if (getStorageUsageKB() > STORAGE_LIMIT_KB) return showToast('⚠ Stockage plein — supprime des QR codes');
+  
+  const tempArea = document.getElementById('temp-qr');
+  tempArea.innerHTML = '';
+  new QRCode(tempArea, { text: txt, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.H });
+  
+  waitForQRCanvas(tempArea, (finalImg) => {
+    items.push({ 
+      id: Date.now(), 
+      type: 'qr',
+      title: t, 
+      img: finalImg, 
+      text: txt,
+      folderId: destFolder ? parseInt(destFolder) : null,
+      fav: false
+    });
+    saveItems(); updateCount();
+    document.getElementById('in-title').value = '';
+    document.getElementById('in-text').value = '';
+    showToast('✓ QR Code créé !');
+  });
+}
+
+function waitForQRCanvas(container, callback, attempts = 0) {
+  if (attempts > 20) return showToast('Erreur de génération');
+  const canvas = container.querySelector('canvas');
+  if (canvas && canvas.width > 0) callback(canvas.toDataURL('image/png'));
+  else requestAnimationFrame(() => waitForQRCanvas(container, callback, attempts + 1));
+}
+
+function saveItems() {
+  try { localStorage.setItem('qr_items_v1', JSON.stringify(items)); }
+  catch(e) { showToast('⚠ Stockage insuffisant'); }
+}
+function getStorageUsageKB() {
+  try { return Math.round(((localStorage.getItem('qr_items_v1') || '').length * 2) / 1024); }
+  catch { return 0; }
+}
+
+// ─── Affichage Galerie ───────────────────────────────────────────────────────
+function render() {
+  const grid = document.getElementById('display-grid');
+  const filtered = getFilteredItems();
+  initDragHint();
+
+  if (filtered.length === 0) {
+    grid.innerHTML = `<div style="grid-column:1/-1; text-align:center; padding:40px 20px; color:var(--mid); font-size:0.85rem; font-family:var(--mono);">Vide ou aucun résultat</div>`;
+    updateStorageBar();
+    return;
+  }
+
+  grid.innerHTML = '';
+
+  filtered.forEach(({ item, idx: realIdx }) => {
+    const card = document.createElement('div');
+    const isFolder = item.type === 'folder';
+    
+    card.className = 'qr-card' + (item.fav ? ' is-fav' : '') + (isEditMode ? ' reordering' : '') + (isFolder ? ' is-folder' : '');
+    card.dataset.realidx = realIdx;
+
+    if (isFolder) {
+      const childrenCount = items.filter(i => i.folderId === item.id).length;
+      card.innerHTML = `
+        <button class="del-btn" title="Supprimer">✕</button>
+        <div class="drag-handle" title="Déplacer">☰</div>
+        <div class="folder-icon-wrap">📁</div>
+        <p>${escapeHtml(item.title)}</p>
+        <div class="folder-count">${childrenCount} élement(s)</div>
+      `;
+      card.addEventListener('click', () => {
+        if (!isEditMode) enterFolder(item.id, item.title);
+      });
+    } else {
+      card.innerHTML = `
+        <button class="fav-btn" title="Favori">${item.fav ? '⭐' : '☆'}</button>
+        <button class="del-btn" title="Supprimer">✕</button>
+        <div class="drag-handle" title="Déplacer">☰</div>
+        <img src="${item.img}" alt="QR ${escapeHtml(item.title)}">
+        <p>${escapeHtml(item.title)}</p>
+      `;
+      card.querySelector('.fav-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        items[realIdx].fav = !items[realIdx].fav;
+        saveItems(); render();
+      });
+      card.addEventListener('click', () => {
+        if (!isEditMode) openFocus(realIdx);
+      });
+    }
+
+    card.querySelector('.del-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      showDeleteModal('qr', item.id, realIdx);
+    });
+
+    addDragEvents(card, realIdx);
+    grid.appendChild(card);
+  });
+
+  updateStorageBar();
+}
+
+function updateStorageBar() {
+  const usedKB = getStorageUsageKB();
+  const pct = Math.min(100, Math.round((usedKB / STORAGE_LIMIT_KB) * 100));
+  const elFill = document.getElementById('storage-fill');
+  if(elFill) {
+    elFill.style.width = pct + '%';
+    elFill.style.background = pct > 80 ? '#e53e3e' : 'var(--accent)';
+  }
+  const elLbl = document.getElementById('storage-label');
+  if(elLbl) elLbl.innerText = `${usedKB} Ko / ${STORAGE_LIMIT_KB} Ko`;
+}
+
+// ─── Mode Focus ─────────────────────────────────────────────────────────────
+function openFocus(idx) {
+  const item = items[idx];
+  if (!item || item.type === 'folder') return;
+  focusIdx = idx;
+  
+  cancelFocusEditMode();
+  const box = document.getElementById('focus-decoded-box');
+  box.style.display = "none";
+  box.innerText = "";
+  
+  renderFocus();
+  document.getElementById('focus-mode').style.display = 'flex';
+}
+
+function renderFocus() {
+  const filtered = getFilteredItems().filter(f => f.item.type === 'qr');
+  const posInFiltered = filtered.findIndex(f => f.idx === focusIdx);
+  const item = items[focusIdx];
+  if (!item) return;
+  focusImgSrc = item.img;
+  
+  document.getElementById('focus-title').innerText = item.title;
+  document.getElementById('focus-qr-display').innerHTML = `<img id="focus-qr-img" src="${item.img}" style="width:220px; max-width:100%; display:block;">`;
+  
+  const total = filtered.length;
+  const pos = posInFiltered >= 0 ? posInFiltered + 1 : '?';
+  document.getElementById('nav-counter').innerText = `${pos} / ${total}`;
+  document.getElementById('nav-prev').disabled = posInFiltered <= 0 || isFocusEditing;
+  document.getElementById('nav-next').disabled = posInFiltered >= filtered.length - 1 || isFocusEditing;
+  document.getElementById('focus-fav-btn').innerText = item.fav ? '⭐' : '☆';
+}
+
+function scanCurrentFocusQR() {
+  const imgElement = document.getElementById('focus-qr-img');
+  const box = document.getElementById('focus-decoded-box');
+  if (!imgElement) return;
+
+  const html5QrCode = new Html5Qrcode("temp-qr");
+  
+  fetch(imgElement.src)
+    .then(res => res.blob())
+    .then(blob => {
+      const file = new File([blob], "qr_image.png", { type: "image/png" });
+      
+      html5QrCode.scanFile(file, true)
+        .then(decodedText => {
+          box.innerText = "Contenu détecté :\n" + decodedText;
+          box.style.display = "block";
+          box.scrollIntoView({ behavior: 'smooth' });
+          if (navigator.vibrate) navigator.vibrate(40);
+          showToast("✓ QR Code lu !");
+        })
+        .catch(err => {
+          const backupText = items[focusIdx] ? items[focusIdx].text : "";
+          if (backupText) {
+            box.innerText = "Contenu (Secours Local) :\n" + backupText;
+            box.style.display = "block";
+          } else {
+            showToast("⚠ Impossible de lire le QR");
+          }
+        });
+    });
+}
+
+function enableFocusEditMode() {
+  isFocusEditing = true;
+  const item = items[focusIdx];
+  if(!item) return;
+
+  document.getElementById('nav-prev').disabled = true;
+  document.getElementById('nav-next').disabled = true;
+
+  document.getElementById('edit-focus-title').value = item.title;
+  document.getElementById('edit-focus-text').value = item.text || "";
+
+  const selectEdit = document.getElementById('edit-focus-folder');
+  let html = '<option value="">(Racine de la galerie)</option>';
+  items.forEach(i => {
+    if (i.type === 'folder') {
+      html += `<option value="${i.id}" ${item.folderId === i.id ? 'selected' : ''}>📁 ${escapeHtml(i.title)}</option>`;
+    }
+  });
+  selectEdit.innerHTML = html;
+
+  document.getElementById('focus-title').style.display = "none";
+  document.getElementById('focus-qr-display').style.display = "none";
+  document.getElementById('focus-decoded-box').style.display = "none";
+  
+  document.getElementById('focus-edit-container').style.display = "flex";
+  document.getElementById('focus-normal-actions').style.display = "none";
+  document.getElementById('focus-edit-actions').style.display = "flex";
+}
+
+function cancelFocusEditMode() {
+  isFocusEditing = false;
+  document.getElementById('focus-title').style.display = "block";
+  document.getElementById('focus-qr-display').style.display = "flex";
+  document.getElementById('focus-edit-container').style.display = "none";
+  document.getElementById('focus-normal-actions').style.display = "flex";
+  document.getElementById('focus-edit-actions').style.display = "none";
+  renderFocus();
+}
+
+function saveFocusModifications() {
+  const newTitle = document.getElementById('edit-focus-title').value.trim();
+  const newText = document.getElementById('edit-focus-text').value.trim();
+  const newFolder = document.getElementById('edit-focus-folder').value;
+
+  if(!newTitle || !newText) return showToast("Ne laissez pas de champs vides");
+
+  const tempArea = document.getElementById('temp-qr');
+  tempArea.innerHTML = '';
+  new QRCode(tempArea, { text: newText, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.H });
+  
+  waitForQRCanvas(tempArea, (finalImg) => {
+    items[focusIdx].title = newTitle;
+    items[focusIdx].text = newText;
+    items[focusIdx].img = finalImg;
+    items[focusIdx].folderId = newFolder ? parseInt(newFolder) : null;
+    
+    saveItems();
+    showToast("✓ Modifications enregistrées !");
+    cancelFocusEditMode();
+    closeFocus();
+    render();
+  });
+}
+
+function navigateFocus(dir) {
+  if (isFocusEditing) return;
+  const filtered = getFilteredItems().filter(f => f.item.type === 'qr');
+  const posInFiltered = filtered.findIndex(f => f.idx === focusIdx);
+  const newPos = posInFiltered + dir;
+  if (newPos < 0 || newPos >= filtered.length) return;
+  focusIdx = filtered[newPos].idx;
+  
+  document.getElementById('focus-decoded-box').style.display = "none";
+  renderFocus();
+}
+
+function toggleFocusFav() {
+  items[focusIdx].fav = !items[focusIdx].fav;
+  saveItems(); renderFocus(); render();
+}
+function closeFocus() { document.getElementById('focus-mode').style.display = 'none'; }
+function downloadFocus() {
+  if (!focusImgSrc) return;
+  const a = document.createElement('a');
+  a.href = focusImgSrc; a.download = 'qrcode.png'; a.click();
+}
+
+// ─── Cloud & Backup ─────────────────────────────────────────────────────────
+const DRIVE_CLIENT_ID = '510292526417-007bs9oh8tdif3hgkr4ov33ns7ctl5kq.apps.googleusercontent.com';
+const DRIVE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_FILE_NAME = 'qr-pro-backup.json';
+let driveToken = null; let driveFileId = null; let driveTokenClient = null; let driveSyncPending = false;
+
+window.addEventListener('load', () => {
+  const wait = setInterval(() => {
+    if (window.google && google.accounts) {
+      clearInterval(wait);
+      driveTokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: DRIVE_CLIENT_ID, scope: DRIVE_SCOPES, callback: onDriveToken,
+      });
+      const saved = sessionStorage.getItem('qrpro_token');
+      if (saved) { driveToken = saved; setDriveUI(true); }
+      else setDriveUI(false);
+    }
+  }, 200);
+});
+
+function onDriveToken(resp) {
+  if (resp.error) { showToast('Connexion annulée'); setDriveUI(false); return; }
+  driveToken = resp.access_token;
+  sessionStorage.setItem('qrpro_token', driveToken);
+  setDriveUI(true);
+  showToast('✓ Connecté à Google Drive');
+  if (driveSyncPending) { driveSyncPending = false; syncDrive(); }
+}
+
+function setDriveUI(connected) {
+  const dot = document.getElementById('drive-dot');
+  const label = document.getElementById('drive-label');
+  if (dot) dot.style.background = connected ? '#6FCF97' : '#aaa';
+  if (label) label.textContent = connected ? 'Drive connecté' : 'Drive';
+}
+
+function toggleDrive() {
+  if (driveToken) {
+    google.accounts.oauth2.revoke(driveToken, () => {});
+    driveToken = null; driveFileId = null;
+    sessionStorage.removeItem('qrpro_token');
+    setDriveUI(false);
+    showToast('Déconnecté de Drive');
+  } else {
+    if (!driveTokenClient) { showToast('Google en chargement…'); return; }
+    driveTokenClient.requestAccessToken();
+  }
+}
+
+async function driveReq(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Authorization': 'Bearer ' + driveToken, ...(opts.headers||{}) } });
+  if (r.status === 401) {
+    driveToken = null; sessionStorage.removeItem('qrpro_token'); setDriveUI(false);
+    throw new Error('Token expiré — reconnecte-toi');
+  }
+  return r;
+}
+
+async function findDriveFile() {
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const r = await driveReq(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`);
+  const d = await r.json();
+  return d.files && d.files.length ? d.files[0].id : null;
+}
+
+// Écrit sur Drive un objet { qr: [...], notes: [...] }
+// Reste rétro-compatible : si l'ancien fichier était un tableau plat, on le traite comme qr:[...]
+async function writeToDrive(qrData, notesData) {
+  const payload = { qr: qrData, notes: notesData };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  if (!driveFileId) driveFileId = await findDriveFile();
+  if (driveFileId) {
+    await driveReq(`https://www.googleapis.com/upload/drive/v3/files/${driveFileId}?uploadType=media`, { method: 'PATCH', body: blob, headers: { 'Content-Type': 'application/json' } });
+  } else {
+    const meta = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+    form.append('file', blob);
+    const r = await driveReq('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', body: form });
+    const d = await r.json(); driveFileId = d.id;
+  }
+}
+
+async function syncDrive() {
+  if (!driveToken) {
+    driveSyncPending = true;
+    if (!driveTokenClient) { showToast('Google en chargement…'); return; }
+    driveTokenClient.requestAccessToken(); return;
+  }
+  setSyncUI(true);
+  try {
+    if (!driveFileId) driveFileId = await findDriveFile();
+
+    // Lecture Drive — rétro-compat : ancien format = tableau plat de QR
+    let driveQr = [], driveNotes = [];
+    if (driveFileId) {
+      const r = await driveReq(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+      const raw = await r.json();
+      if (Array.isArray(raw)) {
+        driveQr = raw; // ancien format
+      } else {
+        driveQr    = Array.isArray(raw.qr)    ? raw.qr    : [];
+        driveNotes = Array.isArray(raw.notes) ? raw.notes : [];
+      }
+    }
+
+    // ── Merge QR ──
+    const localQrIds  = new Set(items.map(i => i.id));
+    const driveQrIds  = new Set(driveQr.map(i => i.id));
+    const onlyOnDriveQr    = driveQr.filter(i => !localQrIds.has(i.id));
+    const onlyOnLocalQr    = items.filter(i => !driveQrIds.has(i.id));
+    onlyOnDriveQr.forEach(i => {
+      if (i.type === undefined) i.type = 'qr';
+      if (i.folderId === undefined) i.folderId = null;
+    });
+    const mergedQr = [...items, ...onlyOnDriveQr];
+
+    // ── Merge Notes ──
+    const localNoteIds = new Set(noteItems.map(n => n.id));
+    const driveNoteIds = new Set(driveNotes.map(n => n.id));
+    const onlyOnDriveNotes = driveNotes.filter(n => !localNoteIds.has(n.id));
+    const onlyOnLocalNotes = noteItems.filter(n => !driveNoteIds.has(n.id));
+    const mergedNotes = [...noteItems, ...onlyOnDriveNotes];
+
+    // ── Message résumé ──
+    const totalNewFromDrive = onlyOnDriveQr.length + onlyOnDriveNotes.length;
+    const totalNewToSend    = onlyOnLocalQr.length  + onlyOnLocalNotes.length;
+    let msg = '';
+    if (totalNewFromDrive === 0 && totalNewToSend === 0) {
+      msg = '✓ Déjà synchronisé';
+    } else {
+      const parts = [];
+      if (totalNewFromDrive) parts.push(`+${totalNewFromDrive} depuis Drive`);
+      if (totalNewToSend)    parts.push(`+${totalNewToSend} vers Drive`);
+      msg = '✓ ' + parts.join(' · ');
+    }
+
+    items = mergedQr;         saveItems();
+    noteItems = mergedNotes;  saveNotes();
+    updateCount(); render(); renderNotes();
+
+    await writeToDrive(mergedQr, mergedNotes);
+    showToast(msg);
+  } catch(e) { showToast('Erreur sync : ' + e.message); }
+  setSyncUI(false);
+}
+
+function setSyncUI(loading) {
+  const btn = document.getElementById('sync-btn');
+  const icon = document.getElementById('sync-icon');
+  if (!btn) return;
+  if (loading) {
+    btn.disabled = true; icon.style.display = 'inline-block'; icon.style.animation = 'spin 0.8s linear infinite';
+  } else {
+    btn.disabled = false; icon.style.animation = '';
+  }
+}
+
+function importJSON(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!Array.isArray(data)) return showToast('⚠ Fichier invalide');
+      const existingIds = new Set(items.map(i => i.id));
+      
+      const newItems = data.filter(i => i.id && i.title && !existingIds.has(i.id));
+      newItems.forEach(i => {
+        if(i.type === undefined) i.type = 'qr';
+        if(i.folderId === undefined) i.folderId = null;
+      });
+
+      items = [...newItems, ...items]; saveItems(); updateCount(); render();
+      showToast(`✓ ${newItems.length} élément(s) importé(s)`);
+    } catch { showToast('⚠ Fichier JSON invalide'); }
+  };
+  reader.readAsText(file); event.target.value = '';
+}
+
+// ─── Suppression unifiée ─────────────────────────────────────────────────────
+// pendingDelete = { source: 'qr'|'note', id, idx? }
+let pendingDelete = null;
+
+function showDeleteModal(source, id, idx) {
+  pendingDelete = { source, id, idx };
+  const collection = source === 'qr' ? items : noteItems;
+  const target = source === 'qr' ? items[idx] : noteItems.find(n => n.id === id);
+  if (!target) return;
+
+  const isFolder = target.type === 'folder' || target.type === 'note-folder';
+  document.getElementById('del-modal-title').textContent = `Supprimer "${target.title}" ?`;
+
+  let desc = isFolder
+    ? `Dossier — tu peux supprimer le dossier seul (le contenu remonte d'un niveau) ou le dossier ET tout ce qu'il contient.`
+    : `Cette action est irréversible. Tu peux aussi le retirer de Google Drive.`;
+  document.getElementById('del-modal-desc').textContent = desc;
+  document.getElementById('btn-del-everywhere').textContent = isFolder
+    ? '🗑 Supprimer dossier + contenu (local + Drive)'
+    : '🗑 Supprimer local + Drive';
+  document.getElementById('btn-del-local').textContent = isFolder
+    ? '📁 Supprimer le dossier vide seulement (local)'
+    : '💾 Supprimer en local seulement';
+
+  document.getElementById('del-modal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+  document.getElementById('del-modal').style.display = 'none';
+  pendingDelete = null;
+}
+
+// Supprime récursivement tous les enfants d'un dossier (QR ou Notes)
+function deleteChildrenRecursive(collection, folderId) {
+  const children = collection.filter(i => i.folderId === folderId);
+  children.forEach(child => {
+    if (child.type === 'folder' || child.type === 'note-folder') {
+      deleteChildrenRecursive(collection, child.id);
+    }
+  });
+  return collection.filter(i => i.folderId !== folderId);
+}
+
+async function confirmDelete(mode) {
+  if (!pendingDelete) return;
+  const { source, id, idx } = pendingDelete;
+  const withDrive = mode === 'drive';
+  closeDeleteModal();
+
+  if (source === 'qr') {
+    const target = items[idx];
+    if (!target) return;
+    const isFolder = target.type === 'folder';
+    if (isFolder) {
+      if (mode === 'drive' || mode === 'local') {
+        // 'drive' = supprimer dossier + contenu, 'local' = dossier vide seulement
+        if (mode === 'drive') {
+          items = deleteChildrenRecursive(items, target.id);
+          items = deleteChildrenRecursive(items, target.id); // sous-sous-dossiers
+          // On refait le filtre proprement
+          items = removeAllDescendants(items, target.id);
+        } else {
+          // Dossier vide : remonter les enfants directs
+          items.forEach(i => { if (i.folderId === target.id) i.folderId = target.folderId; });
+        }
+        items = items.filter(i => i.id !== target.id);
+        showToast('✓ Dossier supprimé');
+      }
+    } else {
+      items = items.filter(i => i.id !== target.id);
+    }
+    saveItems(); updateCount(); render(); updateFolderSelects();
+    if (withDrive && !isFolder) await syncDeleteToDrive(id, 'qr');
+    if (isFolder) await syncDeleteToDrive(null, 'full');
+
+  } else { // notes
+    const target = noteItems.find(n => n.id === id);
+    if (!target) return;
+    const isFolder = target.type === 'note-folder';
+    if (isFolder) {
+      if (mode === 'drive') {
+        noteItems = removeAllNoteDescendants(noteItems, target.id);
+        noteItems = noteItems.filter(n => n.id !== target.id);
+      } else {
+        noteItems.forEach(n => { if (n.folderId === target.id) n.folderId = target.folderId ?? null; });
+        noteItems = noteItems.filter(n => n.id !== target.id);
+      }
+      showToast('✓ Dossier supprimé');
+    } else {
+      noteItems = noteItems.filter(n => n.id !== target.id);
+      showToast('✓ Note supprimée');
+    }
+    saveNotes(); renderNotes();
+    await syncDeleteToDrive(null, 'full');
+  }
+}
+
+// Supprime récursivement tous les descendants d'un dossier QR
+function removeAllDescendants(arr, folderId) {
+  const childIds = arr.filter(i => i.folderId === folderId).map(i => i.id);
+  let result = arr.filter(i => i.folderId !== folderId);
+  childIds.forEach(cid => { result = removeAllDescendants(result, cid); });
+  return result;
+}
+
+function removeAllNoteDescendants(arr, folderId) {
+  const childIds = arr.filter(n => n.folderId === folderId).map(n => n.id);
+  let result = arr.filter(n => n.folderId !== folderId);
+  childIds.forEach(cid => { result = removeAllNoteDescendants(result, cid); });
+  return result;
+}
+
+// Pousse la suppression sur Drive (retire un QR par id, ou réécrit tout)
+async function syncDeleteToDrive(removedQrId, mode) {
+  if (!driveToken) return;
+  try {
+    if (!driveFileId) driveFileId = await findDriveFile();
+    if (!driveFileId) return;
+    const r = await driveReq(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`);
+    const raw = await r.json();
+    let driveQr    = Array.isArray(raw) ? raw : (Array.isArray(raw.qr)    ? raw.qr    : []);
+    let driveNotes = Array.isArray(raw.notes) ? raw.notes : [];
+    if (mode === 'qr' && removedQrId) driveQr = driveQr.filter(i => i.id !== removedQrId);
+    if (mode === 'full') { driveQr = items; driveNotes = noteItems; }
+    await writeToDrive(driveQr, driveNotes);
+    showToast('✓ Synchronisé avec Drive');
+  } catch(e) { showToast('Local supprimé — erreur Drive : ' + e.message); }
+}
+
+// ─── Utilitaires ─────────────────────────────────────────────────────────────
+function escapeHtml(str) { return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function updateCount() { document.getElementById('b-total').innerText = items.filter(i => i.type === 'qr').length; }
+function showToast(m) {
+  const t = document.getElementById('toast');
+  t.innerText = m; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// ─── Notes Module (multi-niveaux) ────────────────────────────────────────────
+let noteItems = JSON.parse(localStorage.getItem('qr_notes_v1') || '[]');
+let currentNoteFolderId = null;
+let noteFolderStack = []; // pile de navigation notes
+let isNotesEditMode = false;
+let editingNoteId = null;
+
+function saveNotes() {
+  try { localStorage.setItem('qr_notes_v1', JSON.stringify(noteItems)); }
+  catch(e) { showToast('⚠ Stockage insuffisant'); }
+  updateNotesCount();
+}
+
+function updateNotesCount() {
+  const count = noteItems.filter(n => n.type === 'note').length;
+  const badge = document.getElementById('b-notes');
+  if (badge) badge.innerText = count;
+}
+
+function toggleNotesEditMode() {
+  isNotesEditMode = !isNotesEditMode;
+  const btn = document.getElementById('notes-edit-toggle');
+  if (isNotesEditMode) {
+    document.body.classList.add('mode-notes-edit');
+    btn.textContent = 'Terminé'; btn.classList.add('active');
+  } else {
+    document.body.classList.remove('mode-notes-edit');
+    btn.textContent = 'Modifier'; btn.classList.remove('active');
+  }
+  renderNotes();
+}
+
+function createNoteFolder() {
+  const name = prompt("Nom du dossier :");
+  if (!name || !name.trim()) return;
+  noteItems.push({
+    id: Date.now(), type: 'note-folder',
+    title: name.trim(), folderId: currentNoteFolderId
+  });
+  saveNotes(); renderNotes();
+}
+
+function enterNoteFolder(id, name) {
+  if (isNotesEditMode) return;
+  noteFolderStack.push({ id: currentNoteFolderId, name: currentNoteFolderId === null ? '🏠 Racine' : document.getElementById('notes-path-name').textContent });
+  currentNoteFolderId = id;
+  updateNotesBreadcrumb(name);
+  renderNotes();
+}
+
+function goUpNoteFolder() {
+  if (!noteFolderStack.length) return exitNoteFolder();
+  const prev = noteFolderStack.pop();
+  currentNoteFolderId = prev.id;
+  if (currentNoteFolderId === null) {
+    document.getElementById('notes-path-bar').style.display = 'none';
+    document.getElementById('notes-root-toolbar').style.display = 'block';
+  } else {
+    updateNotesBreadcrumb(prev.name);
+  }
+  renderNotes();
+}
+
+function exitNoteFolder() {
+  currentNoteFolderId = null;
+  noteFolderStack = [];
+  document.getElementById('notes-path-bar').style.display = 'none';
+  document.getElementById('notes-root-toolbar').style.display = 'block';
+  renderNotes();
+}
+
+function updateNotesBreadcrumb(name) {
+  document.getElementById('notes-path-bar').style.display = 'flex';
+  document.getElementById('notes-root-toolbar').style.display = 'none';
+  document.getElementById('notes-path-name').textContent = `📁 ${name}`;
+}
+
+function createNote() {
+  if (currentNoteFolderId === null) return showToast('Entre dans un dossier pour créer une note');
+  editingNoteId = null;
+  document.getElementById('note-modal-label').textContent = 'Nouvelle note';
+  document.getElementById('note-input-title').value = '';
+  document.getElementById('note-input-desc').value = '';
+  document.getElementById('note-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('note-input-title').focus(), 100);
+}
+
+function openNoteEdit(id) {
+  const note = noteItems.find(n => n.id === id);
+  if (!note) return;
+  editingNoteId = id;
+  document.getElementById('note-modal-label').textContent = 'Modifier la note';
+  document.getElementById('note-input-title').value = note.title;
+  document.getElementById('note-input-desc').value = note.desc || '';
+  document.getElementById('note-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('note-input-title').focus(), 100);
+}
+
+function closeNoteModal() {
+  document.getElementById('note-modal').style.display = 'none';
+  editingNoteId = null;
+}
+
+function saveNoteFromModal() {
+  const title = document.getElementById('note-input-title').value.trim();
+  const desc  = document.getElementById('note-input-desc').value.trim();
+  if (!title) return showToast('Ajoute un titre');
+  if (editingNoteId !== null) {
+    const note = noteItems.find(n => n.id === editingNoteId);
+    if (note) { note.title = title; note.desc = desc; note.updatedAt = Date.now(); }
+    showToast('✓ Note mise à jour');
+  } else {
+    noteItems.push({ id: Date.now(), type: 'note', folderId: currentNoteFolderId, title, desc, createdAt: Date.now(), updatedAt: Date.now() });
+    showToast('✓ Note créée');
+  }
+  saveNotes(); closeNoteModal(); renderNotes();
+}
+
+function formatNoteDate(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }) + ' · ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+}
+
+function renderNotes() {
+  const display = document.getElementById('notes-display');
+  if (!display) return;
+  const query = (document.getElementById('notes-search')?.value || '').toLowerCase().trim();
+
+  if (query) {
+    const matches = noteItems.filter(n => n.type === 'note' && n.title.toLowerCase().includes(query));
+    if (!matches.length) { display.innerHTML = `<div class="notes-empty"><span>🔍</span>Aucune note trouvée</div>`; return; }
+    display.innerHTML = '';
+    const list = document.createElement('div');
+    list.className = 'notes-list';
+    matches.forEach(note => list.appendChild(buildNoteCard(note)));
+    display.appendChild(list);
+    return;
+  }
+
+  // Afficher sous-dossiers + notes du niveau courant
+  const subFolders = noteItems.filter(n => n.type === 'note-folder' && n.folderId === currentNoteFolderId);
+  const notes      = noteItems.filter(n => n.type === 'note'        && n.folderId === currentNoteFolderId);
+
+  if (!subFolders.length && !notes.length) {
+    display.innerHTML = currentNoteFolderId === null
+      ? `<div class="notes-empty"><span>📁</span>Aucun dossier.<br>Clique sur "📁+" pour commencer.</div>`
+      : `<div class="notes-empty"><span>📝</span>Dossier vide.<br>Crée une note ou un sous-dossier.</div>`;
+    return;
+  }
+
+  display.innerHTML = '';
+
+  if (subFolders.length) {
+    const grid = document.createElement('div');
+    grid.className = 'notes-folders-grid';
+    subFolders.forEach(folder => {
+      const count = noteItems.filter(n => n.folderId === folder.id).length;
+      const card = document.createElement('div');
+      card.className = 'notes-folder-card';
+      card.innerHTML = `
+        <button class="del-btn" title="Supprimer">✕</button>
+        <div class="folder-icon">📁</div>
+        <div class="folder-name">${escapeHtml(folder.title)}</div>
+        <div class="folder-meta">${count} élément${count > 1 ? 's' : ''}</div>
+      `;
+      card.querySelector('.del-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        showDeleteModal('note', folder.id, null);
+      });
+      card.addEventListener('click', () => enterNoteFolder(folder.id, folder.title));
+      grid.appendChild(card);
+    });
+    display.appendChild(grid);
+  }
+
+  if (notes.length) {
+    const list = document.createElement('div');
+    list.className = 'notes-list';
+    if (subFolders.length) list.style.marginTop = '12px';
+    notes.forEach(note => list.appendChild(buildNoteCard(note)));
+    display.appendChild(list);
+  }
+}
+
+function buildNoteCard(note) {
+  const card = document.createElement('div');
+  card.className = 'note-card';
+  card.innerHTML = `
+    <button class="del-btn" title="Supprimer">✕</button>
+    <div class="note-title">${escapeHtml(note.title)}</div>
+    <div class="note-desc">${escapeHtml(note.desc || '')}</div>
+    <div class="note-date">${formatNoteDate(note.updatedAt || note.createdAt)}</div>
+  `;
+  card.querySelector('.del-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    showDeleteModal('note', note.id, null);
+  });
+  card.addEventListener('click', () => { if (!isNotesEditMode) openNoteEdit(note.id); });
+  return card;
+}
+
+// ─── End Notes Module ─────────────────────────────────────────────────────────
+
+// Lancement global
+updateCount();
+updateNotesCount();
+updateFolderSelects();
+</script>
+
+<div id="del-modal">
+  <div class="del-modal-box">
+    <h3 id="del-modal-title">Supprimer ?</h3>
+    <p id="del-modal-desc">Action irréversible</p>
+    <div class="del-modal-actions">
+      <button class="del-btn-drive" id="btn-del-everywhere" onclick="confirmDelete('drive')">🗑 Supprimer local + Drive</button>
+      <button class="del-btn-local" id="btn-del-local" onclick="confirmDelete('local')">💾 Supprimer en local seulement</button>
+      <button class="del-btn-cancel" onclick="closeDeleteModal()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
